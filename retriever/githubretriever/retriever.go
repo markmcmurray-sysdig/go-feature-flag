@@ -2,15 +2,30 @@ package githubretriever
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/thomaspoignant/go-feature-flag/internal"
 	"github.com/thomaspoignant/go-feature-flag/retriever/shared"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+// TODO popualte these from config file
+const (
+	ClientID       = "Iv23liDEe9v9R7OJSEV9"
+	InstallID      = "61427078"
+	PrivateKeyPath = "/Users/mark.mcmurray/Downloads/go-feature-flags-app.2025-02-21.private-key.pem"
+	JWTExpiry      = time.Minute * 9
 )
 
 // Retriever is a configuration struct for a GitHub retriever.
@@ -27,11 +42,84 @@ type Retriever struct {
 	// rate limit fields
 	rateLimitRemaining int
 	rateLimitReset     time.Time
+
+	// Github App fields
+	privateKey *rsa.PrivateKey
+	// mu         sync.Mutex
+	token  string
+	expiry time.Time
 }
 
 func (r *Retriever) Retrieve(ctx context.Context) ([]byte, error) {
 	if r.FilePath == "" || r.RepositorySlug == "" {
 		return nil, fmt.Errorf("missing mandatory information filePath=%s, repositorySlug=%s", r.FilePath, r.RepositorySlug)
+	}
+
+	print("Re-running retreiver\n")
+	if r.privateKey == nil {
+		var err error
+		r.privateKey, err = LoadPrivateKey(PrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load private key: %w", err)
+		}
+	}
+	// check if token needs to be populated or refreshed
+	if r.token == "" {
+
+		now := time.Now()
+		expiry := now.Add(JWTExpiry)
+
+		claims := jwt.MapClaims{
+			"iat": now.Unix(),    // Issued at
+			"exp": expiry.Unix(), // Expiration
+			"iss": ClientID,      // GitHub App Client ID
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		signedToken, err := token.SignedString(r.privateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign JWT: %w", err)
+		}
+
+		r.token = signedToken
+		r.expiry = expiry
+
+		// Refresh Auth Token - TODO break this into it's own logical block
+
+		url := fmt.Sprintf("https://api.github.com/app/installations/%s/access_tokens", InstallID)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", r.token))
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+		client := r.httpClient
+		if client == nil {
+			client = http.DefaultClient
+		}
+
+		response, error := client.Do(req)
+		if error != nil {
+			return nil, fmt.Errorf("failed to get access token: %w", err)
+		}
+		defer response.Body.Close()
+
+		if response.StatusCode != http.StatusCreated {
+			return nil, fmt.Errorf("failed to get access token, status: %d", response.StatusCode)
+		}
+
+		var tokenResp struct {
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&tokenResp); err != nil {
+			return nil, fmt.Errorf("failed to decode token response: %w", err)
+		}
+
+		r.GithubToken = tokenResp.Token
+
 	}
 
 	// default branch is main
@@ -103,4 +191,24 @@ func (r *Retriever) updateRateLimit(headers http.Header) {
 			r.rateLimitReset = time.Unix(resetInt, 0)
 		}
 	}
+}
+
+// LoadPrivateKey loads a GitHub App private key from file
+func LoadPrivateKey(path string) (*rsa.PrivateKey, error) {
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key: %w", err)
+	}
+
+	block, _ := pem.Decode(keyBytes)
+	if block == nil {
+		return nil, fmt.Errorf("failed to parse PEM block from private key")
+	}
+
+	parsedKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	return parsedKey, nil
 }

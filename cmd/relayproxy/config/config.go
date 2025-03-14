@@ -28,10 +28,12 @@ var DefaultRetriever = struct {
 	Timeout    time.Duration
 	HTTPMethod string
 	GitBranch  string
+	JWTExpiry  time.Duration
 }{
 	Timeout:    10 * time.Second,
 	HTTPMethod: http.MethodGet,
 	GitBranch:  "main",
+	JWTExpiry:  9 * time.Minute,
 }
 
 const DefaultLogLevel = "info"

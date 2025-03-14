@@ -26,7 +26,7 @@ import (
 	"github.com/thomaspoignant/go-feature-flag/notifier/slacknotifier"
 	"github.com/thomaspoignant/go-feature-flag/notifier/webhooknotifier"
 	"github.com/thomaspoignant/go-feature-flag/retriever"
-	"github.com/thomaspoignant/go-feature-flag/retriever/azblobstorageretriever"
+	azblobretriever "github.com/thomaspoignant/go-feature-flag/retriever/azblobstorageretriever"
 	"github.com/thomaspoignant/go-feature-flag/retriever/bitbucketretriever"
 	"github.com/thomaspoignant/go-feature-flag/retriever/fileretriever"
 	"github.com/thomaspoignant/go-feature-flag/retriever/gcstorageretriever"
@@ -128,9 +128,12 @@ func initRetriever(c *config.RetrieverConf) (retriever.Retriever, error) {
 				}
 				return c.Branch
 			}(),
-			FilePath:    c.Path,
-			GithubToken: token,
-			Timeout:     retrieverTimeout,
+			FilePath:       c.Path,
+			GithubToken:    token,
+			Timeout:        retrieverTimeout,
+			ClientID:       c.ClientID,
+			InstallID:      c.InstallID,
+			PrivateKeyPath: c.PrivateKeyPath,
 		}, nil
 	case config.GitlabRetriever:
 		return &gitlabretriever.Retriever{

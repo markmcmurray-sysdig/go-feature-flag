@@ -22,10 +22,7 @@ import (
 
 // TODO popualte these from config file
 const (
-	ClientID       = "Iv23liDEe9v9R7OJSEV9"
-	InstallID      = "61427078"
-	PrivateKeyPath = "/Users/mark.mcmurray/Downloads/go-feature-flags-app.2025-02-21.private-key.pem"
-	JWTExpiry      = time.Minute * 9
+	JWTExpiry = time.Minute * 9
 )
 
 // Retriever is a configuration struct for a GitHub retriever.
@@ -48,6 +45,10 @@ type Retriever struct {
 	// mu         sync.Mutex
 	token  string
 	expiry time.Time
+
+	ClientID       string
+	InstallID      string
+	PrivateKeyPath string
 }
 
 func (r *Retriever) Retrieve(ctx context.Context) ([]byte, error) {
@@ -58,7 +59,7 @@ func (r *Retriever) Retrieve(ctx context.Context) ([]byte, error) {
 	print("Re-running retreiver\n")
 	if r.privateKey == nil {
 		var err error
-		r.privateKey, err = LoadPrivateKey(PrivateKeyPath)
+		r.privateKey, err = LoadPrivateKey(r.PrivateKeyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load private key: %w", err)
 		}
@@ -72,7 +73,7 @@ func (r *Retriever) Retrieve(ctx context.Context) ([]byte, error) {
 		claims := jwt.MapClaims{
 			"iat": now.Unix(),    // Issued at
 			"exp": expiry.Unix(), // Expiration
-			"iss": ClientID,      // GitHub App Client ID
+			"iss": r.ClientID,    // GitHub App Client ID
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
@@ -86,7 +87,7 @@ func (r *Retriever) Retrieve(ctx context.Context) ([]byte, error) {
 
 		// Refresh Auth Token - TODO break this into it's own logical block
 
-		url := fmt.Sprintf("https://api.github.com/app/installations/%s/access_tokens", InstallID)
+		url := fmt.Sprintf("https://api.github.com/app/installations/%s/access_tokens", r.InstallID)
 		req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)

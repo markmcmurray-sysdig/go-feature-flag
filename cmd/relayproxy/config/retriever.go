@@ -12,6 +12,11 @@ type RetrieverConf struct {
 	RepositorySlug string        `mapstructure:"repositorySlug" koanf:"repositoryslug"`
 	Branch         string        `mapstructure:"branch" koanf:"branch"`
 	Path           string        `mapstructure:"path" koanf:"path"`
+	ClientID       string        `mapstructure:"clientid" koanf:"clientid"`
+	InstallID      string        `mapstructure:"installid" koanf:"installid"`
+	PrivateKeyPath string        `mapstructure:"privatekeypath" koanf:"privatekeypath"`
+	JWTExpiry      int64         `mapstructure:"jwtexpiry" koanf:"jwtexpiry"`
+
 	// Deprecated: Please use AuthToken instead
 	GithubToken  string              `mapstructure:"githubToken" koanf:"githubtoken"`
 	URL          string              `mapstructure:"url" koanf:"url"`
